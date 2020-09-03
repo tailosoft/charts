@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "scalelite.fullname" . }}-nginx
+  labels:
+    {{- include "scalelite.labels" . | nindent 4 }}
+spec:
+  replicas: 1 # only serves static files
+  selector:
+    matchLabels:
+      {{- include "scalelite.nginxSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+    {{- with .Values.nginxPodAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      labels:
+        {{- include "scalelite.nginxSelectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "scalelite.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.nginxTag | default (printf "v%s-nginx" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - mountPath: /var/bigbluebutton/published
+              name: recordings
+              readOnly: true
+              subPath: var/bigbluebutton/published
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command: # to succeed on code 403 Forbidden
+                - /bin/sh
+                - -c
+                - CODE=$(wget --server-response http://localhost 2>&1 | awk '/^  HTTP/{print $2}' | tail -1); if [ "$CODE" -ge 200 ] && [ "$CODE" -le 499 ]; then exit 0; else exit 1; fi
+          readinessProbe:
+            exec:
+              command: # to succeed on code 403 Forbidden
+                - /bin/sh
+                - -c
+                - CODE=$(wget --server-response http://localhost 2>&1 | awk '/^  HTTP/{print $2}' | tail -1); if [ "$CODE" -ge 200 ] && [ "$CODE" -le 499 ]; then exit 0; else exit 1; fi
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: recordings
+          persistentVolumeClaim:
+            claimName: recordings-pvc

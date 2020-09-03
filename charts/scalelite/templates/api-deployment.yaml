@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "scalelite.fullname" . }}-api
+  labels:
+    {{- include "scalelite.labels" . | nindent 4 }}
+spec:
+{{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+{{- end }}
+  selector:
+    matchLabels:
+      {{- include "scalelite.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+    {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      labels:
+        {{- include "scalelite.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "scalelite.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s-api" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: URL_HOST
+              value: {{.Values.urlHost}}
+            - name: SECRET_KEY_BASE
+              value: {{.Values.secretKeyBase}}
+            - name: LOADBALANCER_SECRET
+              value: {{.Values.loadBalancerSecret}}
+            - name: DATABASE_URL
+              value: {{ include "scalelite.databaseUrl" . }}
+            - name: REDIS_URL
+              value: {{ include "scalelite.redisUrl" . }}
+            - name: POLL_INTERVAL
+              value: "60"
+            - name: RECORDING_IMPORT_POLL
+              value: "true"
+            - name: RECORDING_IMPORT_POLL_INTERVAL
+              value: "60"
+            - name: RECORDING_SPOOL_DIR
+              value: /mnt/scalelite-recordings/var/bigbluebutton/spool
+            - name: RECORDING_WORK_DIR
+              value: /mnt/scalelite-recordings/var/bigbluebutton/recording/scalelite
+            - name: RECORDING_PUBLISH_DIR
+              value: /mnt/scalelite-recordings/var/bigbluebutton/published
+            - name: RECORDING_UNPUBLISH_DIR
+              value: /mnt/scalelite-recordings/var/bigbluebutton/unpublished
+          command: ["/bin/sh","-c"]
+          args: ['bundle exec rake poll["$POLL_INTERVAL"] & bundle exec rake recordings:watch["$RECORDING_IMPORT_POLL","$RECORDING_IMPORT_POLL_INTERVAL"] & bundle exec puma -C config/puma.rb "$@"']
+          volumeMounts:
+            - mountPath: /mnt/scalelite-recordings
+              name: recordings
+          ports:
+            - name: puma
+              containerPort: 3000
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - /srv/scalelite/bin/rake
+                - status
+          readinessProbe:
+            exec:
+              command:
+                - /srv/scalelite/bin/rake
+                - status
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: recordings
+          persistentVolumeClaim:
+            claimName: recordings-pvc

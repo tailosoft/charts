@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "scalelite.fullname" . }}-api
+  labels:
+    {{- include "scalelite.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: 3000
+      targetPort: puma
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "scalelite.selectorLabels" . | nindent 4 }}
