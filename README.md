@@ -18,10 +18,7 @@ HELM_REPO_PASSWORD=CHANGE_IT
 # next line can be commented if project already built
 helm dependency build ../charts/$1
 helm package ../charts/$1
-curl -O $HELM_REPO_URL/index.yaml
-helm repo index . --url $HELM_REPO_URL --merge ./index.yaml
-curl -X PUT -u $HELM_REPO_USERNAME:$HELM_REPO_PASSWORD --data-binary "@index.yaml" $HELM_REPO_URL/index.yaml
-curl -X PUT -u $HELM_REPO_USERNAME:$HELM_REPO_PASSWORD --data-binary "@$NAME-$VERSION.tgz" $HELM_REPO_URL/$NAME-$VERSION.tgz
+curl --fail -u $HELM_REPO_USERNAME:$HELM_REPO_PASSWORD --data-binary "@$NAME-$VERSION.tgz" $HELM_REPO_URL/api/charts
 echo "uploaded $NAME-$VERSION.tgz successfully"
 rm -rf $NAME*.tgz
 ```
